@@ -3,37 +3,33 @@ package com.program.tcp;
 import java.io.BufferedReader;
 import java.io.DataOutputStream;
 import java.io.InputStreamReader;
-import java.net.InetSocketAddress;
 import java.net.Socket;
-import java.net.SocketAddress;
 
 class TCPClient {
-	private final static int SERVER_PORT = 2008;
+	private final static int SOCKET_01_PORT = 2008;
 
 	public static void main(String argv[]) throws Exception {
 		String sentence;
 		String modifiedSentence;
-		System.out.println("Enter the sentence ");
-		Socket clientSocket = null;
+		Socket socket01 = null;
 		try {
-			BufferedReader inFromUser = new BufferedReader(new InputStreamReader(System.in));
-			clientSocket = new Socket();
-			SocketAddress address = new InetSocketAddress("localhost", SERVER_PORT);
-			clientSocket.connect(address);
+			socket01 = new Socket("localhost", SOCKET_01_PORT);
 
-			DataOutputStream outToServer = new DataOutputStream(clientSocket.getOutputStream());
-			BufferedReader inFromServer = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-
-			sentence = inFromUser.readLine();
-			outToServer.writeBytes(sentence + '\n');
-
-			modifiedSentence = inFromServer.readLine();
-			System.out.println("FROM SERVER: " + modifiedSentence);
+			BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+			System.out.println("Enter the sentence ");
+			sentence = br.readLine();
+			
+			DataOutputStream outToRelayServer = new DataOutputStream(socket01.getOutputStream());
+			outToRelayServer.writeBytes(sentence + '\n');
+			
+			BufferedReader inFromRelayServer = new BufferedReader(new InputStreamReader(socket01.getInputStream()));
+			modifiedSentence = inFromRelayServer.readLine();
+			System.out.println("FROM RELAY SERVER: " + modifiedSentence);
 
 		} catch (Exception e) {
 			e.printStackTrace();
 		} finally {
-			clientSocket.close();
+			socket01.close();
 		}
 	}
 }

@@ -46,9 +46,9 @@ import java.io.InputStreamReader;
 import java.net.Socket;//For Socket class to connect to server
 
 class TCPClient{
-	private static int SOCKET_01_PORT = 2008; // default port number, remember
+	private static int SOCKET_01_PORT = 28712; // default port number, remember
 												// to change yours
-	private static String SOCKET_01_IP = "147.97.156.237";// default ip
+	private static String SOCKET_01_IP = "localhost";// default ip
 
 	public static void main(String argv[]) {
 		String sentence;

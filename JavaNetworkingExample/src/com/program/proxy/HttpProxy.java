@@ -8,6 +8,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.HashMap;
+import java.util.Map;
 
 public class HttpProxy implements Runnable {
 	private static int RELAY_PORT = 28712;// default port number, remember to
@@ -18,6 +20,10 @@ public class HttpProxy implements Runnable {
 	private static String WEB_SERVER_IP = "localhost";// "147.97.156.237";//
 														// default ip
 
+	private static String BASE_DIRECTORY = "E://";
+
+	private Map<String, String> requestHeaders;
+	private Map<String, String> responseHeaders;
 	private Socket socket01 = null;
 	private Socket socket02 = null;
 
@@ -54,7 +60,8 @@ public class HttpProxy implements Runnable {
 			while (true) {
 				// Opened connection and binds ip address and port number of
 				// socket 2
-				new Thread(new HttpProxy(serverSocket.accept(), new Socket(WEB_SERVER_IP, WEB_SERVER_PORT))).start();
+				Thread t = new Thread(new HttpProxy(serverSocket.accept(), new Socket(WEB_SERVER_IP, WEB_SERVER_PORT)));
+				t.start();
 			}
 		} catch (Exception e) {
 			System.out.println("Exception ::");
@@ -71,65 +78,150 @@ public class HttpProxy implements Runnable {
 
 	@Override
 	public void run() {
-		byte[] dataFromBrowser = new byte[500];
 		byte[] dataFromWebServer = new byte[500];
 		FileOutputStream fileOutputStream = null;
+
 		try {
-			fileOutputStream = new FileOutputStream(new File("F://simsons.txt"), true);
 			// To receive message from socket 01
 			InputStream receive_Socket_01 = socket01.getInputStream();
-			// To send message to socket 02
+
 			OutputStream send_Socket_02 = socket02.getOutputStream();
-			do {
 
-				receive_Socket_01.read(dataFromBrowser);
+			StringBuffer sb = new StringBuffer();
+			requestHeaders = parseRequestHeader(receive_Socket_01, sb);
 
-				String line = null;
-				for (byte b : dataFromBrowser) {
-					line = line + (char) b;
-				}
-				if (line.contains("favicon"))
-					continue;
+			String fileName = extractFileName(requestHeaders.get("request"));
 
-				send_Socket_02.write(dataFromBrowser);
-				dataFromWebServer = new byte[500];
-			} while (receive_Socket_01.available() > 0);
+			if (fileName != null) {
+				File file = new File(BASE_DIRECTORY + fileName);
+				file.getParentFile().mkdirs();
+				fileOutputStream = new FileOutputStream(file);
+
+			}
+
+			// To send message to socket 02
+			send_Socket_02.write(sb.toString().getBytes());
 
 			// To receive message from socket 02
 			BufferedInputStream receive_Socket_02 = new BufferedInputStream(socket02.getInputStream());
+
+			sb = new StringBuffer();
+			responseHeaders = parseHeader(receive_Socket_02, sb);
+			int contentLength = Integer.parseInt(
+					responseHeaders.get("Content-Length") != null ? responseHeaders.get("Content-Length") : "0");
+
 			// To send message to socket 01
 			OutputStream send_Socket_01 = socket01.getOutputStream();
-			do {
-				receive_Socket_02.read(dataFromWebServer);
+			send_Socket_01.write(sb.toString().getBytes());
+			// fileOutputStream.write(sb.toString().getBytes());
+			int length = 0;
+
+			while (contentLength != 0 && length != contentLength) {
+				length += receive_Socket_02.read(dataFromWebServer);
 				send_Socket_01.write(dataFromWebServer);
-				for (byte b : dataFromWebServer) {
-					System.out.print((char) b);
-				}
 				fileOutputStream.write(dataFromWebServer);
 				dataFromWebServer = new byte[500];
-			} while (receive_Socket_02.available() > 0);
-
-			fileOutputStream.flush();
+			}
+			if (fileOutputStream != null)
+				fileOutputStream.close();
 			receive_Socket_01.close();
 			send_Socket_02.close();
 			send_Socket_02.flush();
 			receive_Socket_02.close();
 			send_Socket_01.close();
 			send_Socket_01.flush();
-			dataFromBrowser = new byte[500];
 			dataFromWebServer = new byte[500];
 		} catch (Exception e) {
-
+			System.err.print(e);
+			e.printStackTrace();
 		} finally {
 			try {
+				if (fileOutputStream != null)
+					fileOutputStream.close();
 				socket01.close();
 				socket02.close();
-				fileOutputStream.close();
 			} catch (IOException e) {
 				System.err.println("Could not close port.");
 				System.exit(1);
 			}
 		}
 
+	}
+
+	private String extractFileName(String request) {
+		String fileName = null;
+		for (String part : request.split(" ")) {
+			if (part.contains(".html")) {// Extract fileName for html files
+				fileName = part.substring(part.lastIndexOf('/') + 1, part.length());
+			} else if (part.contains(".jpg") || part.contains(".jpeg") || part.contains(".png")) {// Extract
+																									// file
+																									// name
+																									// for
+																									// image
+																									// files
+				fileName = part.substring(part.lastIndexOf('/') + 1, part.length());
+				part = part.replace(fileName, "");
+				part = part.substring(0, part.length() - 1);
+				String path = part.substring(part.lastIndexOf('/') + 1, part.length());
+				fileName = path + "/" + fileName;
+			}
+		}
+		return fileName;
+	}
+
+	public static Map<String, String> parseRequestHeader(InputStream inputStream, StringBuffer sb) throws IOException {
+		int c = 0;
+
+		while (c != -1)// read -1 means inputstream is not giving anything
+		{
+			c = inputStream.read();
+			sb.append((char) c);
+			if (c == '\r') {
+				sb.append((char) inputStream.read());
+				c = inputStream.read();
+				if (c == '\r') {
+					sb.append((char) inputStream.read());
+					break;
+				} else {
+					sb.append((char) c);
+				}
+			}
+		}
+		String[] headersArray = sb.toString().split("\r\n");
+
+		Map<String, String> headers = new HashMap<String, String>();
+		headers.put("request", headersArray[0]);
+		for (int i = 1; i < headersArray.length - 1; i++) {
+			headers.put(headersArray[i].split(": ")[0], headersArray[i].split(": ")[1]);
+		}
+
+		return headers;
+	}
+
+	public static Map<String, String> parseHeader(InputStream inputStream, StringBuffer sb) throws IOException {
+		int c = 0;
+
+		while (c != -1)// read -1 means inputstream is not giving anything
+		{
+			c = inputStream.read();
+			sb.append((char) c);
+			if (c == '\r') {
+				sb.append((char) inputStream.read());
+				c = inputStream.read();
+				if (c == '\r') {
+					sb.append((char) inputStream.read());
+					break;
+				} else {
+					sb.append((char) c);
+				}
+			}
+		}
+		String[] headersArray = sb.toString().split("\r\n");
+		Map<String, String> headers = new HashMap<String, String>();
+		for (int i = 1; i < headersArray.length - 1; i++) {
+			headers.put(headersArray[i].split(": ")[0], headersArray[i].split(": ")[1]);
+		}
+
+		return headers;
 	}
 }
